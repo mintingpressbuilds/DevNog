@@ -9,12 +9,16 @@ from pathlib import Path
 
 
 class Severity(enum.Enum):
+    """Severity level for scanner findings."""
+
     CRITICAL = "critical"
     WARNING = "warning"
     INFO = "info"
 
 
 class Category(enum.Enum):
+    """Category classification for scanner checks."""
+
     CODE_QUALITY = "code_quality"
     SECURITY = "security"
     ERROR_HANDLING = "error_handling"
@@ -24,6 +28,8 @@ class Category(enum.Enum):
 
 
 class FixType(enum.Enum):
+    """Type of fix available for a finding."""
+
     RULE_BASED = "rule_based"
     AI_GENERATED = "ai_generated"
     MANUAL = "manual"

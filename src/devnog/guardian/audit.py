@@ -19,7 +19,6 @@ Requires a Pro or Enterprise license.
 from __future__ import annotations
 
 import fcntl
-import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -178,7 +177,7 @@ class HealingAuditLog:
                     try:
                         fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
                     except (OSError, IOError):
-                        pass
+                        pass  # unlock may fail if lock was never acquired
                     fd.close()
 
 

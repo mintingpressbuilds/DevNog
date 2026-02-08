@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 import click
-from rich.prompt import Confirm
 
 from devnog.core.config import load_config
 from devnog.core.output import console, get_progress, print_qa_verdict
@@ -14,17 +13,21 @@ from devnog.fix.engine import FixEngine
 
 
 @click.command()
+@click.argument("target", default=".")
 @click.option("--dashboard", "open_dashboard", is_flag=True, help="Open results in dashboard")
 @click.option("--fix", "auto_fix", is_flag=True, help="Fix all auto-fixable readiness gaps")
 @click.option("--strict", is_flag=True, help="Fail CI if not fully ready")
 @click.option("--quick", is_flag=True, help="Quick check (skip slow analysis)")
-def qa(open_dashboard: bool, auto_fix: bool, strict: bool, quick: bool):
+def qa(target: str, open_dashboard: bool, auto_fix: bool, strict: bool, quick: bool):
     """Validate production readiness.
+
+    TARGET can be a directory path. Defaults to current directory.
 
     Checks things tests don't cover: error handling, timeouts,
     infrastructure, security config, and more.
     """
-    project_path = Path.cwd()
+    target_path = Path(target).resolve()
+    project_path = target_path if target_path.is_dir() else Path.cwd()
     config = load_config(project_path)
 
     try:
@@ -35,7 +38,7 @@ def qa(open_dashboard: bool, auto_fix: bool, strict: bool, quick: bool):
 
     with get_progress() as progress:
         task = progress.add_task("Running QA checks...", total=None)
-        gate = QAGate(project_path, config)
+        gate = QAGate(project_path)
         verdict = gate.evaluate()
         progress.update(task, completed=True)
 

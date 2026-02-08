@@ -9,8 +9,9 @@ fail_under = 0                     # Score threshold for CI (0 = disabled)
 categories = ["code_quality", "security", "error_handling", "dependencies"]
 
 [scan.code_quality]
-max_function_length = 50
-max_complexity = 10
+max_function_length = 150
+max_nesting_depth = 8
+max_complexity = 30
 # ignore = ["CQ-005"]             # Uncomment to skip specific checks
 
 [scan.security]

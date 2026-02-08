@@ -16,6 +16,8 @@ console = Console(stderr=True)
 
 
 class Tier(Enum):
+    """License tier levels for feature gating."""
+
     FREE = "free"
     PRO = "pro"
     ENTERPRISE = "enterprise"
@@ -23,6 +25,8 @@ class Tier(Enum):
 
 @dataclass
 class License:
+    """Decoded license information including tier, expiry, and holder."""
+
     tier: Tier
     valid_until: datetime | None  # None = perpetual (free tier)
     seats: int  # 1 for individual, N for enterprise

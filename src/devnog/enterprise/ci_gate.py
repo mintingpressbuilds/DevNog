@@ -169,7 +169,7 @@ class CIScanDiff:
                 capture_output=True, text=True, cwd=str(self.project_path),
             ).stdout.strip()
         except Exception:
-            pass
+            pass  # git may not be available; proceed without VCS metadata
 
         findings_json = json.dumps([
             {
@@ -227,7 +227,7 @@ class CIScanDiff:
                 return None
 
             findings_data = json.loads(row[1]) if row[1] else []
-            from devnog.core.models import Category, FixType
+            from devnog.core.models import Category
             findings = []
             for fd in findings_data:
                 findings.append(Finding(
