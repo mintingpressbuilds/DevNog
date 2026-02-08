@@ -54,8 +54,10 @@ all = [
 devnog = "devnog.cli.main:cli"
 
 [project.urls]
-Homepage = "https://devnog.dev"
-Repository = "https://github.com/devnog/devnog"
+Homepage = "https://github.com/mintingpressbuilds/DevNog"
+Repository = "https://github.com/mintingpressbuilds/DevNog"
+Issues = "https://github.com/mintingpressbuilds/DevNog/issues"
+Changelog = "https://github.com/mintingpressbuilds/DevNog/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/devnog"]
