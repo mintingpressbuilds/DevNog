@@ -1,0 +1,18 @@
+# DevNog Team Configuration (Enterprise)
+# Commit this file to your repo. Every developer's DevNog installation respects it.
+# Individual devnog.toml cannot override team settings.
+
+[team]
+name = "My Team"
+min_score = 75                     # Block merges if score drops below
+required_categories = ["security", "error_handling"]  # Cannot be skipped
+
+[team.scan]
+fail_under = 75                    # CI fails below this score
+ignore = []                        # Team-wide ignores only
+
+[team.security]
+# severity_overrides = { "SEC-001" = "critical", "SEC-002" = "critical" }
+
+[team.qa]
+required_checks = ["QA-007", "QA-009", "QA-010"]  # Must pass before deploy

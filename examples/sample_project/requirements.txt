@@ -1,0 +1,10 @@
+# Sample requirements with intentional issues for DevNog demo
+# DEP-003: Unpinned dependencies (no version specified)
+requests
+flask
+sqlalchemy
+celery
+redis
+pytest
+django==4.2.0
+numpy>=1.20
