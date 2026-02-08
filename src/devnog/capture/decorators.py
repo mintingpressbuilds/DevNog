@@ -21,7 +21,6 @@ import asyncio
 import functools
 import inspect
 import logging
-import sys
 import time
 import traceback
 from datetime import datetime
@@ -408,11 +407,22 @@ def checkpoint(
     skip already-completed steps.
     """
     def decorator(fn: F) -> F:
+        # Detect if the function accepts a _ckpt parameter
+        sig = inspect.signature(fn)
+        _accepts_ckpt = (
+            "_ckpt" in sig.parameters
+            or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD
+                for p in sig.parameters.values()
+            )
+        )
+
         if asyncio.iscoroutinefunction(fn):
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 ckpt_ctx = _make_checkpoint_context(fn, args, kwargs, store)
-                kwargs["_ckpt"] = ckpt_ctx
+                if _accepts_ckpt:
+                    kwargs["_ckpt"] = ckpt_ctx
                 try:
                     result = await fn(*args, **kwargs)
                     ckpt_ctx.mark_completed()
@@ -426,7 +436,8 @@ def checkpoint(
             @functools.wraps(fn)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 ckpt_ctx = _make_checkpoint_context(fn, args, kwargs, store)
-                kwargs["_ckpt"] = ckpt_ctx
+                if _accepts_ckpt:
+                    kwargs["_ckpt"] = ckpt_ctx
                 try:
                     result = fn(*args, **kwargs)
                     ckpt_ctx.mark_completed()

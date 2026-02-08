@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import click
-from rich.console import Console
 from rich.prompt import Confirm
 
 from devnog.core.config import get_devnog_dir, load_config
@@ -28,6 +26,7 @@ from devnog.scanner.engine import Scanner
 @click.option("--preview", is_flag=True, help="Preview fix without applying")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.option("--runtime", is_flag=True, help="Fix runtime failures captured by Guardian")
+@click.option("--target", "-t", "target", default=".", help="Target directory to fix (default: current dir)")
 def fix(
     finding_id: str | None,
     fix_all: bool,
@@ -36,12 +35,15 @@ def fix(
     preview: bool,
     yes: bool,
     runtime: bool,
+    target: str,
 ):
     """Fix issues found by the scanner.
 
     Pass a specific FINDING_ID (e.g., SEC-001) or use --all for batch fixes.
+    Use --target to specify a directory other than the current one.
     """
-    project_path = Path.cwd()
+    target_path = Path(target).resolve()
+    project_path = target_path if target_path.is_dir() else Path.cwd()
     config = load_config(project_path)
     fix_engine = FixEngine(project_path, config)
 
@@ -55,7 +57,7 @@ def fix(
     old_score = report.overall_score
 
     if fix_all:
-        _fix_all(fix_engine, report, config, yes)
+        _fix_all(fix_engine, report, config, yes, project_path)
         return
 
     if category:
@@ -110,9 +112,9 @@ def fix(
     console.print("  Run `devnog scan` to see available issues.\n")
 
 
-def _fix_all(fix_engine: FixEngine, report, config, yes: bool):
+def _fix_all(fix_engine: FixEngine, report, config, yes: bool, project_path: Path | None = None):
     """Handle --all flag."""
-    devnog_dir = get_devnog_dir(Path.cwd())
+    devnog_dir = get_devnog_dir(project_path or Path.cwd())
     first_fix_marker = devnog_dir / ".first_fix_done"
     is_first_fix = not first_fix_marker.exists()
 
@@ -167,7 +169,7 @@ def _fix_all(fix_engine: FixEngine, report, config, yes: bool):
         print_fix_result(result)
 
     # Rescan for new score
-    scanner = Scanner(Path.cwd(), config)
+    scanner = Scanner(project_path or Path.cwd(), config)
     new_report = scanner.scan()
     print_fix_summary(results, report.overall_score, new_report.overall_score)
 

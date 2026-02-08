@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 import webbrowser
-import zipfile
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from devnog.core.config import load_config
-from devnog.core.models import FixType
 from devnog.fix.engine import FixEngine
 from devnog.scanner.engine import Scanner
 
@@ -43,6 +39,8 @@ def _make_handler(project_path: Path, config):
     """Create a request handler class with project context."""
 
     class DashboardHandler(BaseHTTPRequestHandler):
+        """HTTP request handler for the DevNog dashboard API and UI."""
+
         def log_message(self, format, *args):
             pass  # Suppress default logging
 
@@ -97,7 +95,7 @@ def _make_handler(project_path: Path, config):
         def _api_qa(self):
             try:
                 from devnog.qa.engine import QAGate
-                gate = QAGate(project_path, config)
+                gate = QAGate(project_path)
                 verdict = gate.evaluate()
                 self._send_json({
                     "verdict": verdict.verdict,

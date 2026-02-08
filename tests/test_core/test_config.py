@@ -15,8 +15,8 @@ class TestLoadConfig:
         config = load_config(tmp_path)
 
         assert isinstance(config, DevNogConfig)
-        assert config.scan.max_function_length == 50
-        assert config.scan.max_complexity == 10
+        assert config.scan.max_function_length == 150
+        assert config.scan.max_complexity == 30
         assert "code_quality" in config.scan.categories
         assert "security" in config.scan.categories
         assert "error_handling" in config.scan.categories
@@ -131,15 +131,15 @@ fail_under = 90
 
         assert config.scan.fail_under == 90
         # Other defaults should be preserved
-        assert config.scan.max_function_length == 50
-        assert config.scan.max_complexity == 10
+        assert config.scan.max_function_length == 150
+        assert config.scan.max_complexity == 30
 
     def test_empty_toml_returns_defaults(self, tmp_path: Path):
         """An empty devnog.toml should return all defaults."""
         (tmp_path / "devnog.toml").write_text("")
         config = load_config(tmp_path)
 
-        assert config.scan.max_function_length == 50
+        assert config.scan.max_function_length == 150
         assert config.fix.backup_before_fix is True
 
     def test_loads_guardian_section(self, tmp_path: Path):
@@ -163,8 +163,8 @@ class TestDevNogConfigDefaults:
         """ScanConfig should have sensible defaults."""
         sc = ScanConfig()
         assert sc.fail_under == 0
-        assert sc.max_function_length == 50
-        assert sc.max_complexity == 10
+        assert sc.max_function_length == 150
+        assert sc.max_complexity == 30
         assert sc.ignore == []
 
     def test_fix_config_defaults(self):

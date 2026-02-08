@@ -6,7 +6,7 @@ from pathlib import Path
 
 import click
 
-from devnog.core.config import get_devnog_dir, load_config
+from devnog.core.config import get_devnog_dir
 from devnog.core.output import console
 
 

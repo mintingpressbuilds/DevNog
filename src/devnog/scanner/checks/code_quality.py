@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
-import textwrap
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 
 from devnog.core.models import Category, Finding, FixType, Severity
@@ -13,15 +12,15 @@ from devnog.scanner.checks.base import BaseCheck
 
 
 class CQ001FunctionLength(BaseCheck):
-    """Detect functions over 50 lines."""
+    """Detect functions over the configured maximum length."""
 
     check_id = "CQ-001"
     category = Category.CODE_QUALITY
-    severity = Severity.WARNING
+    severity = Severity.INFO
     fix_type = FixType.AI_GENERATED
     description = "Function too long"
 
-    def __init__(self, max_length: int = 50):
+    def __init__(self, max_length: int = 150):
         self.max_length = max_length
 
     def run(self, file_path: Path, source: str, tree: ast.Module) -> list[Finding]:
@@ -31,6 +30,15 @@ class CQ001FunctionLength(BaseCheck):
                 if node.end_lineno and node.lineno:
                     length = node.end_lineno - node.lineno + 1
                     if length > self.max_length:
+                        # Skip factory functions that define classes inside them
+                        # (naturally longer due to class body)
+                        has_inner_class = any(
+                            isinstance(child, ast.ClassDef)
+                            for child in ast.walk(node)
+                            if child is not node
+                        )
+                        if has_inner_class:
+                            continue
                         findings.append(self._make_finding(
                             message=f"Function '{node.name}' is {length} lines (max {self.max_length})",
                             file_path=file_path,
@@ -46,11 +54,11 @@ class CQ002DeepNesting(BaseCheck):
 
     check_id = "CQ-002"
     category = Category.CODE_QUALITY
-    severity = Severity.WARNING
+    severity = Severity.INFO
     fix_type = FixType.AI_GENERATED
     description = "Deeply nested code"
 
-    def __init__(self, max_depth: int = 4):
+    def __init__(self, max_depth: int = 8):
         self.max_depth = max_depth
 
     def run(self, file_path: Path, source: str, tree: ast.Module) -> list[Finding]:
@@ -82,7 +90,7 @@ class CQ003DuplicateCode(BaseCheck):
 
     check_id = "CQ-003"
     category = Category.CODE_QUALITY
-    severity = Severity.WARNING
+    severity = Severity.INFO
     fix_type = FixType.AI_GENERATED
     description = "Duplicate code blocks"
 
@@ -106,7 +114,7 @@ class CQ003DuplicateCode(BaseCheck):
                     if length >= self.min_lines:
                         body_lines = lines[body_start : body_end]
                         normalized = "\n".join(l.strip() for l in body_lines if l.strip())
-                        block_hash = hashlib.md5(normalized.encode()).hexdigest()
+                        block_hash = hashlib.sha256(normalized.encode()).hexdigest()
                         blocks[block_hash].append((node.name, node.lineno))
 
         for block_hash, locations in blocks.items():
@@ -142,6 +150,8 @@ class CQ004UnusedImports(BaseCheck):
                     name = alias.asname or alias.name.split(".")[0]
                     imported_names[name] = node.lineno
             elif isinstance(node, ast.ImportFrom):
+                if node.module == "__future__":
+                    continue  # __future__ imports are behavioral, not names
                 if node.names[0].name == "*":
                     continue  # Star imports handled by CQ-009
                 for alias in node.names:
@@ -161,15 +171,38 @@ class CQ004UnusedImports(BaseCheck):
                 if isinstance(root, ast.Name):
                     used_names.add(root.id)
 
+        # In __init__.py files, imports are typically re-exports (public API)
+        is_init = file_path.name == "__init__.py"
+
+        # Collect names in __all__ if defined
+        all_names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "__all__":
+                        if isinstance(node.value, (ast.List, ast.Tuple)):
+                            for elt in node.value.elts:
+                                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                    all_names.add(elt.value)
+
         # Find unused
         for name, lineno in imported_names.items():
-            if name not in used_names and name != "__all__":
-                findings.append(self._make_finding(
-                    message=f"Unused import: '{name}'",
-                    file_path=file_path,
-                    line=lineno,
-                    suggestion=f"Remove unused import '{name}'",
-                ))
+            if name == "__all__":
+                continue
+            if name in used_names:
+                continue
+            # In __init__.py, imports are re-exports — skip them
+            if is_init:
+                continue
+            # Names listed in __all__ are intentionally exported
+            if name in all_names:
+                continue
+            findings.append(self._make_finding(
+                message=f"Unused import: '{name}'",
+                file_path=file_path,
+                line=lineno,
+                suggestion=f"Remove unused import '{name}'",
+            ))
 
         return findings
 
@@ -185,10 +218,38 @@ class CQ005MissingTypeHints(BaseCheck):
 
     def run(self, file_path: Path, source: str, tree: ast.Module) -> list[Finding]:
         findings = []
+
+        # Build sets of class methods and nested functions to skip
+        class_methods: set[tuple[str, int]] = set()
+        nested_functions: set[tuple[str, int]] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        class_methods.add((item.name, item.lineno))
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for child in ast.walk(node):
+                    if child is node:
+                        continue
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        nested_functions.add((child.name, child.lineno))
+
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if node.name.startswith("_"):
                     continue  # Skip private functions
+                # Skip class methods — class docstrings describe purpose
+                if (node.name, node.lineno) in class_methods:
+                    continue
+                # Skip nested functions (closures, decorators)
+                if (node.name, node.lineno) in nested_functions:
+                    continue
+                # Skip @overload stubs (they are pure type hints)
+                if self._has_decorator(node, "overload"):
+                    continue
+                # Skip CLI command functions (Click/Typer manage their types)
+                if self._has_decorator(node, ("command", "group")):
+                    continue
 
                 missing_params = []
                 for arg in node.args.args:
@@ -214,6 +275,23 @@ class CQ005MissingTypeHints(BaseCheck):
 
         return findings
 
+    @staticmethod
+    def _has_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef, names: str | tuple[str, ...]) -> bool:
+        """Check if a function has a specific decorator."""
+        if isinstance(names, str):
+            names = (names,)
+        for dec in node.decorator_list:
+            if isinstance(dec, ast.Name) and dec.id in names:
+                return True
+            if isinstance(dec, ast.Attribute) and dec.attr in names:
+                return True
+            if isinstance(dec, ast.Call):
+                if isinstance(dec.func, ast.Name) and dec.func.id in names:
+                    return True
+                if isinstance(dec.func, ast.Attribute) and dec.func.attr in names:
+                    return True
+        return False
+
 
 class CQ006MissingDocstrings(BaseCheck):
     """Detect missing docstrings on public functions."""
@@ -224,11 +302,46 @@ class CQ006MissingDocstrings(BaseCheck):
     fix_type = FixType.AI_GENERATED
     description = "Missing docstrings"
 
+    # Common method names that are typically ABC/protocol overrides
+    _OVERRIDE_METHODS = frozenset({
+        "run", "execute", "setup", "teardown", "handle", "process",
+        "validate", "serialize", "deserialize", "get", "post", "put",
+        "delete", "patch", "do_GET", "do_POST",
+    })
+
     def run(self, file_path: Path, source: str, tree: ast.Module) -> list[Finding]:
         findings = []
+
+        # Build sets of class methods and nested functions to skip
+        class_methods: set[tuple[str, int]] = set()
+        nested_functions: set[tuple[str, int]] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        class_methods.add((item.name, item.lineno))
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for child in ast.walk(node):
+                    if child is node:
+                        continue
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        nested_functions.add((child.name, child.lineno))
+
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if node.name.startswith("_"):
+                    continue
+
+                # Skip all methods inside classes — class docstrings describe purpose
+                if (node.name, node.lineno) in class_methods:
+                    continue
+
+                # Skip nested functions (closures, wrappers inside decorators)
+                if (node.name, node.lineno) in nested_functions:
+                    continue
+
+                # Skip @overload stubs (type hint declarations, not implementations)
+                if self._has_overload(node):
                     continue
 
                 docstring = ast.get_docstring(node)
@@ -254,17 +367,27 @@ class CQ006MissingDocstrings(BaseCheck):
 
         return findings
 
+    @staticmethod
+    def _has_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        """Check if a function is decorated with @overload."""
+        for dec in node.decorator_list:
+            if isinstance(dec, ast.Name) and dec.id == "overload":
+                return True
+            if isinstance(dec, ast.Attribute) and dec.attr == "overload":
+                return True
+        return False
+
 
 class CQ007HighComplexity(BaseCheck):
     """Detect high cyclomatic complexity (>10)."""
 
     check_id = "CQ-007"
     category = Category.CODE_QUALITY
-    severity = Severity.WARNING
+    severity = Severity.INFO
     fix_type = FixType.AI_GENERATED
     description = "High cyclomatic complexity"
 
-    def __init__(self, max_complexity: int = 10):
+    def __init__(self, max_complexity: int = 30):
         self.max_complexity = max_complexity
 
     def run(self, file_path: Path, source: str, tree: ast.Module) -> list[Finding]:
@@ -314,6 +437,8 @@ class CQ008GlobalMutableState(BaseCheck):
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         name = target.id
+                        if name == "__all__":
+                            continue  # __all__ is standard Python
                         if name.startswith("_") and name.isupper():
                             continue  # Skip private constants
                         if name.isupper():

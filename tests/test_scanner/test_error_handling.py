@@ -153,8 +153,12 @@ except Exception as e:
 # ---------------------------------------------------------------------------
 class TestERR003IOWithoutTry:
     def test_detects_open_without_try(self):
-        """open() outside try/except should trigger ERR-003."""
+        """open() in a route handler outside try/except should trigger ERR-003."""
         source = """\
+from flask import Flask
+app = Flask(__name__)
+
+@app.route("/data")
 def read_file():
     f = open("data.txt")
     return f.read()
@@ -180,8 +184,12 @@ def read_file():
         assert len(findings) == 0
 
     def test_detects_write_without_try(self):
-        """write() outside try should trigger ERR-003."""
+        """open() in route handler outside try should trigger ERR-003."""
         source = """\
+from flask import Flask
+app = Flask(__name__)
+
+@app.route("/save")
 def save_data(data):
     f = open("output.txt", "w")
     f.write(data)
@@ -409,9 +417,9 @@ cache.get("key")
 # ---------------------------------------------------------------------------
 class TestERR008ReturnNoneOnError:
     def test_detects_return_none_in_except(self):
-        """return None in except block should trigger ERR-008."""
+        """return None in except block should trigger ERR-008 when return type is non-Optional."""
         source = """\
-def fetch(url):
+def fetch(url) -> str:
     try:
         return do_fetch(url)
     except Exception:
@@ -423,9 +431,9 @@ def fetch(url):
         assert findings[0].check_id == "ERR-008"
 
     def test_detects_bare_return_in_except(self):
-        """Bare return (implicitly None) in except should trigger ERR-008."""
+        """Bare return (implicitly None) in except should trigger ERR-008 when return type is non-Optional."""
         source = """\
-def fetch(url):
+def fetch(url) -> str:
     try:
         return do_fetch(url)
     except Exception:

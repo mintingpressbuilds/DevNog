@@ -8,11 +8,9 @@ individual capture) and auto-prunes the oldest entries when the cap is hit.
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 

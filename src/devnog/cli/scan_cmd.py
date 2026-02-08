@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 import click
-from rich.console import Console
 
 from devnog.core.config import ensure_gitignore, get_devnog_dir, load_config
 from devnog.core.input_resolver import InputResolver

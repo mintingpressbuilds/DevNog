@@ -22,9 +22,7 @@ dict lookup — effectively zero.
 from __future__ import annotations
 
 import logging
-import sys
 import time
-import traceback
 from typing import Any, Callable
 
 from devnog.guardian.config import GuardianConfig, guardian_config, _is_guardian_disabled

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +16,8 @@ except ImportError:
 
 @dataclass
 class ScanConfig:
+    """Configuration for scanner behavior and thresholds."""
+
     fail_under: int = 0
     categories: list[str] = field(
         default_factory=lambda: [
@@ -26,13 +27,16 @@ class ScanConfig:
             "dependencies",
         ]
     )
-    max_function_length: int = 50
-    max_complexity: int = 10
+    max_function_length: int = 150
+    max_nesting_depth: int = 8
+    max_complexity: int = 30
     ignore: list[str] = field(default_factory=list)
 
 
 @dataclass
 class FixConfig:
+    """Configuration for fix engine behavior and AI settings."""
+
     auto_apply_safe: bool = False
     backup_before_fix: bool = True
     max_ai_fixes_per_run: int = 10
@@ -42,6 +46,8 @@ class FixConfig:
 
 @dataclass
 class CaptureConfig:
+    """Configuration for failure capture storage and encryption."""
+
     max_captures: int = 500
     max_size_mb: int = 5
     encrypt: bool = True
@@ -50,6 +56,8 @@ class CaptureConfig:
 
 @dataclass
 class GuardianConfig:
+    """Configuration for runtime guardian middleware."""
+
     enable_healing: bool = False
     sample_rate: float = 1.0
     max_overhead_ms: float = 2.0
@@ -58,6 +66,8 @@ class GuardianConfig:
 
 @dataclass
 class DashboardConfig:
+    """Configuration for the localhost web dashboard."""
+
     port: int = 7654
     auto_open_browser: bool = True
 
@@ -117,6 +127,8 @@ def load_config(project_path: Path | None = None) -> DevNogConfig:
         cq = s.get("code_quality", {})
         if "max_function_length" in cq:
             config.scan.max_function_length = cq["max_function_length"]
+        if "max_nesting_depth" in cq:
+            config.scan.max_nesting_depth = cq["max_nesting_depth"]
         if "max_complexity" in cq:
             config.scan.max_complexity = cq["max_complexity"]
 

@@ -69,7 +69,7 @@ class QAGate:
                         try:
                             f.file = f.file.relative_to(self.project_path)
                         except ValueError:
-                            pass
+                            pass  # path is not relative to project root; keep as-is
                 all_findings.extend(check_findings)
             except Exception:
                 # Never let a broken check abort the entire gate.

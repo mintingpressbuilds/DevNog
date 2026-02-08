@@ -47,7 +47,7 @@ def _parse_requirements(project_path: Path) -> list[tuple[str, str, Path]]:
                     if match:
                         deps.append((match.group(1), match.group(2) or "", pyproject))
             except Exception:
-                pass
+                pass  # skip unparseable pyproject.toml
 
     return deps
 
@@ -64,7 +64,7 @@ def _get_installed_packages() -> dict[str, str]:
             packages = json.loads(result.stdout)
             return {p["name"].lower(): p["version"] for p in packages}
     except Exception:
-        pass
+        pass  # pip may not be available; return empty package list
     return {}
 
 
@@ -271,6 +271,13 @@ class DEP006OutdatedPackages(DependencyCheck):
     def run(self, project_path: Path) -> list[Finding]:
         findings = []
 
+        # Only check packages that are declared project dependencies
+        project_deps = _parse_requirements(project_path)
+        if not project_deps:
+            return findings  # No declared deps to check
+
+        project_dep_names = {name.lower() for name, _, _ in project_deps}
+
         try:
             result = subprocess.run(
                 ["pip", "list", "--outdated", "--format=json"],
@@ -281,6 +288,9 @@ class DEP006OutdatedPackages(DependencyCheck):
                 outdated = json.loads(result.stdout)
                 for pkg in outdated:
                     name = pkg.get("name", "")
+                    # Only check declared project dependencies, not system packages
+                    if name.lower() not in project_dep_names:
+                        continue
                     current = pkg.get("version", "")
                     latest = pkg.get("latest_version", "")
 
@@ -297,7 +307,7 @@ class DEP006OutdatedPackages(DependencyCheck):
                     except (ValueError, IndexError):
                         continue
         except Exception:
-            pass
+            pass  # version comparison failed; skip outdated-package check
 
         return findings
 
@@ -311,20 +321,29 @@ class DEP007MissingRequirements(DependencyCheck):
     fix_type = FixType.RULE_BASED
     description = "Missing requirements file"
 
+    REQ_FILES = (
+        "requirements.txt",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "Pipfile",
+        "poetry.lock",
+    )
+
     def run(self, project_path: Path) -> list[Finding]:
         findings = []
 
-        has_req = any(
-            (project_path / f).exists()
-            for f in (
-                "requirements.txt",
-                "pyproject.toml",
-                "setup.py",
-                "setup.cfg",
-                "Pipfile",
-                "poetry.lock",
-            )
-        )
+        # Check project_path and up to 3 parent directories for requirements files
+        has_req = False
+        search_path = project_path.resolve()
+        for _ in range(4):
+            if any((search_path / f).exists() for f in self.REQ_FILES):
+                has_req = True
+                break
+            parent = search_path.parent
+            if parent == search_path:
+                break
+            search_path = parent
 
         if not has_req:
             # Check if there are Python files to warrant a requirements file

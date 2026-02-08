@@ -21,6 +21,17 @@ SECRET_PATTERNS = [
     r"AKIA[0-9A-Z]{16}",     # AWS access keys
 ]
 
+def _get_decorator_name(node: ast.AST) -> str | None:
+    """Extract the name of a decorator from its AST node."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Call):
+        return _get_decorator_name(node.func)
+    return None
+
+
 SECRET_VAR_NAMES = {
     "api_key", "apikey", "api_secret", "secret_key", "secret",
     "password", "passwd", "pwd", "token", "auth_token",
@@ -90,7 +101,22 @@ class SEC002SQLInjection(BaseCheck):
     fix_type = FixType.AI_GENERATED
     description = "SQL injection risk"
 
-    SQL_KEYWORDS = {"SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER"}
+    # Patterns that strongly indicate SQL: keyword followed by table-like context
+    SQL_PATTERNS = [
+        r"\bSELECT\b.+\bFROM\b",
+        r"\bINSERT\b.+\bINTO\b",
+        r"\bUPDATE\b.+\bSET\b",
+        r"\bDELETE\b.+\bFROM\b",
+        r"\bDROP\b\s+\b(?:TABLE|DATABASE|INDEX)\b",
+        r"\bCREATE\b\s+\b(?:TABLE|DATABASE|INDEX)\b",
+        r"\bALTER\b\s+\bTABLE\b",
+    ]
+
+    def _is_sql(self, text: str) -> bool:
+        """Return True if *text* looks like a SQL query (not just a word match)."""
+        import re
+        upper = text.upper()
+        return any(re.search(pat, upper) for pat in self.SQL_PATTERNS)
 
     def run(self, file_path: Path, source: str, tree: ast.Module) -> list[Finding]:
         findings = []
@@ -98,7 +124,7 @@ class SEC002SQLInjection(BaseCheck):
             # f-string with SQL
             if isinstance(node, ast.JoinedStr):
                 sql_text = self._extract_fstring_text(node)
-                if any(kw in sql_text.upper() for kw in self.SQL_KEYWORDS):
+                if self._is_sql(sql_text):
                     findings.append(self._make_finding(
                         message="SQL injection risk: f-string used in SQL query",
                         file_path=file_path,
@@ -112,7 +138,7 @@ class SEC002SQLInjection(BaseCheck):
                     if isinstance(node.func.value, ast.Constant) and isinstance(
                         node.func.value.value, str
                     ):
-                        if any(kw in node.func.value.value.upper() for kw in self.SQL_KEYWORDS):
+                        if self._is_sql(node.func.value.value):
                             findings.append(self._make_finding(
                                 message="SQL injection risk: .format() used in SQL query",
                                 file_path=file_path,
@@ -123,7 +149,7 @@ class SEC002SQLInjection(BaseCheck):
             # % formatting with SQL
             if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
                 if isinstance(node.left, ast.Constant) and isinstance(node.left.value, str):
-                    if any(kw in node.left.value.upper() for kw in self.SQL_KEYWORDS):
+                    if self._is_sql(node.left.value):
                         findings.append(self._make_finding(
                             message="SQL injection risk: % formatting used in SQL query",
                             file_path=file_path,
@@ -162,7 +188,7 @@ class SEC003MissingRateLimiting(BaseCheck):
 
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                decorators = [self._get_decorator_name(d) for d in node.decorator_list]
+                decorators = [_get_decorator_name(d) for d in node.decorator_list]
                 if any(d in self.ROUTE_DECORATORS for d in decorators if d):
                     findings.append(self._make_finding(
                         message=f"No rate limiting on route '{node.name}'",
@@ -173,15 +199,6 @@ class SEC003MissingRateLimiting(BaseCheck):
                     break  # One finding per file is enough
 
         return findings
-
-    def _get_decorator_name(self, node: ast.AST) -> str | None:
-        if isinstance(node, ast.Name):
-            return node.id
-        if isinstance(node, ast.Attribute):
-            return node.attr
-        if isinstance(node, ast.Call):
-            return self._get_decorator_name(node.func)
-        return None
 
 
 class SEC004DangerousEval(BaseCheck):
@@ -360,8 +377,12 @@ class SEC008TokensInURL(BaseCheck):
         # Check for URLs with sensitive params in f-strings or string concatenation
         lines = source.splitlines()
         for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            # Skip comment lines and string literals used for documentation
+            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+                continue
             for param in self.SENSITIVE_PARAMS:
-                # Check URL patterns: ?token= or &token= in strings
+                # Look for URL construction patterns with sensitive params
                 patterns = [
                     f"?{param}=",
                     f"&{param}=",
@@ -438,36 +459,61 @@ class SEC010PathTraversal(BaseCheck):
     fix_type = FixType.AI_GENERATED
     description = "Path traversal risk"
 
-    FILE_OPS = {"open", "read_text", "read_bytes", "write_text", "write_bytes"}
+    # Bare builtin calls (ast.Name)
+    FILE_BUILTINS = {"open"}
+    # Method calls on objects (ast.Attribute) — excludes 'open' to avoid
+    # false positives like webbrowser.open()
+    FILE_METHODS = {"read_text", "read_bytes", "write_text", "write_bytes"}
 
     def run(self, file_path: Path, source: str, tree: ast.Module) -> list[Finding]:
         findings = []
+
+        # Collect function parameter names to identify truly user-controlled paths
+        func_params: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for arg in node.args.args:
+                    func_params.add(arg.arg)
+
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 func_name = None
+                is_file_op = False
                 if isinstance(node.func, ast.Name):
                     func_name = node.func.id
+                    is_file_op = func_name in self.FILE_BUILTINS
                 elif isinstance(node.func, ast.Attribute):
                     func_name = node.func.attr
+                    is_file_op = func_name in self.FILE_METHODS
 
-                if func_name in self.FILE_OPS and node.args:
+                if is_file_op and node.args:
                     arg = node.args[0]
                     # Check if the path argument uses user input (f-string, format, +)
                     if isinstance(arg, ast.JoinedStr):
-                        findings.append(self._make_finding(
-                            message=f"Potential path traversal: user-controlled path in {func_name}()",
-                            file_path=file_path,
-                            line=node.lineno,
-                            suggestion="Sanitize path input: use Path.resolve() and validate prefix",
-                        ))
+                        # Only flag if the f-string references a function parameter
+                        if self._references_params(arg, func_params):
+                            findings.append(self._make_finding(
+                                message=f"Potential path traversal: user-controlled path in {func_name}()",
+                                file_path=file_path,
+                                line=node.lineno,
+                                suggestion="Sanitize path input: use Path.resolve() and validate prefix",
+                            ))
                     elif isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add):
-                        findings.append(self._make_finding(
-                            message=f"Potential path traversal: concatenated path in {func_name}()",
-                            file_path=file_path,
-                            line=node.lineno,
-                            suggestion="Sanitize path input: use Path.resolve() and validate prefix",
-                        ))
+                        if self._references_params(arg, func_params):
+                            findings.append(self._make_finding(
+                                message=f"Potential path traversal: concatenated path in {func_name}()",
+                                file_path=file_path,
+                                line=node.lineno,
+                                suggestion="Sanitize path input: use Path.resolve() and validate prefix",
+                            ))
         return findings
+
+    def _references_params(self, node: ast.AST, params: set[str]) -> bool:
+        """Check if an AST node references any function parameters."""
+        for child in ast.walk(node):
+            if isinstance(child, ast.Name) and child.id in params:
+                return True
+        return False
 
 
 class SEC011MissingInputValidation(BaseCheck):
@@ -493,7 +539,7 @@ class SEC011MissingInputValidation(BaseCheck):
 
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                decorators = [self._get_decorator_name(d) for d in node.decorator_list]
+                decorators = [_get_decorator_name(d) for d in node.decorator_list]
                 if any(d in self.ROUTE_DECORATORS for d in decorators if d):
                     # Check if function body accesses request data without validation
                     body_source = ast.dump(node)
@@ -506,15 +552,6 @@ class SEC011MissingInputValidation(BaseCheck):
                             suggestion="Add input validation (Pydantic, marshmallow, or manual checks)",
                         ))
         return findings
-
-    def _get_decorator_name(self, node: ast.AST) -> str | None:
-        if isinstance(node, ast.Name):
-            return node.id
-        if isinstance(node, ast.Attribute):
-            return node.attr
-        if isinstance(node, ast.Call):
-            return self._get_decorator_name(node.func)
-        return None
 
 
 class SEC012SubprocessShell(BaseCheck):

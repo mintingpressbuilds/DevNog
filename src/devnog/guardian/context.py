@@ -22,9 +22,7 @@ a transparent no-op.
 from __future__ import annotations
 
 import logging
-import sys
 import time
-import traceback
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 

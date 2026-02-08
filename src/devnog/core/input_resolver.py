@@ -13,6 +13,8 @@ from pathlib import Path
 
 @dataclass
 class ResolvedInput:
+    """Result of resolving a scan target to a local directory path."""
+
     path: Path
     is_temp: bool
     source_type: str  # "directory", "zip", "github"

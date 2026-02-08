@@ -35,6 +35,8 @@ class Scanner:
                 # Apply config overrides
                 if check.check_id.startswith("CQ-001"):
                     check = check_cls(max_length=self.config.scan.max_function_length)  # type: ignore[call-arg]
+                elif check.check_id.startswith("CQ-002"):
+                    check = check_cls(max_depth=self.config.scan.max_nesting_depth)  # type: ignore[call-arg]
                 elif check.check_id.startswith("CQ-007"):
                     check = check_cls(max_complexity=self.config.scan.max_complexity)  # type: ignore[call-arg]
                 else:
@@ -81,7 +83,7 @@ class Scanner:
                                 try:
                                     f.file = f.file.relative_to(self.project_path)
                                 except ValueError:
-                                    pass
+                                    pass  # path is not relative to project root; keep as-is
                         findings.extend(file_findings)
                     except Exception:
                         continue  # Don't fail entire scan if one check errors
