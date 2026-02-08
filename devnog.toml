@@ -1,0 +1,42 @@
+# DevNog Configuration
+# All settings have sensible defaults — this file is optional.
+
+[general]
+exclude = ["venv/", ".venv/", "migrations/", "__pycache__/", ".devnog/", "node_modules/", ".git/"]
+
+[scan]
+fail_under = 0                     # Score threshold for CI (0 = disabled)
+categories = ["code_quality", "security", "error_handling", "dependencies"]
+
+[scan.code_quality]
+max_function_length = 50
+max_complexity = 10
+# ignore = ["CQ-005"]             # Uncomment to skip specific checks
+
+[scan.security]
+# ignore = []
+
+[fix]
+auto_apply_safe = false            # If true, rule-based fixes apply without prompt
+backup_before_fix = true           # Save backup before modifying files
+max_ai_fixes_per_run = 10         # Rate limit AI API calls
+
+[fix.ai]
+model = "claude-sonnet-4-20250514" # Claude model for AI fixes
+max_tokens = 2000
+
+[capture]
+max_captures = 500
+max_size_mb = 5
+encrypt = true
+redact_sensitive = true
+
+[guardian]
+enable_healing = false             # Observe only by default
+sample_rate = 1.0
+max_overhead_ms = 2.0
+alert_on_critical = true
+
+[dashboard]
+port = 7654
+auto_open_browser = true
