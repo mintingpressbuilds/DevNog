@@ -361,14 +361,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <span id="status" class="loading">Loading...</span>
 </div>
 <div class="tabs">
-    <div class="tab active" onclick="showTab('report')">Report Card</div>
-    <div class="tab" onclick="showTab('qa')">QA Gate</div>
-    <div class="tab" onclick="showTab('runtime')">Runtime</div>
-    <div class="tab" onclick="showTab('history')">History</div>
+    <div class="tab active" onclick="showTab('report', this)">Report Card</div>
+    <div class="tab" onclick="showTab('qa', this)">QA Gate</div>
+    <div class="tab" onclick="showTab('runtime', this)">Runtime</div>
+    <div class="tab" onclick="showTab('history', this)">History</div>
 </div>
-<div class="content" id="main-content">
-    <div class="loading" id="loading">Scanning...</div>
-</div>
+<div class="content" id="main-content"></div>
 
 <div class="modal-overlay" id="fix-modal">
     <div class="modal">
@@ -399,9 +397,9 @@ async function api(path, method='GET', body=null) {
 function scoreColor(s) { return s >= 80 ? '#3fb950' : s >= 60 ? '#d29922' : '#f85149'; }
 
 async function loadScan() {
-    document.getElementById('loading').style.display = 'block';
+    const c = document.getElementById('main-content');
+    c.innerHTML = '<div class="loading">Scanning...</div>';
     currentData = await api('scan');
-    document.getElementById('loading').style.display = 'none';
     document.getElementById('status').textContent = 'Score: ' + currentData.overall_score + '/100';
     document.getElementById('status').style.color = scoreColor(currentData.overall_score);
     renderReport(currentData);
@@ -501,9 +499,9 @@ async function scanUrl() {
 
 function closeModal() { document.getElementById('fix-modal').classList.remove('active'); }
 
-function showTab(tab) {
+function showTab(tab, el) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    el.classList.add('active');
     if (tab === 'report') loadScan();
     else if (tab === 'qa') loadQA();
     else if (tab === 'runtime') loadRuntime();
