@@ -149,7 +149,8 @@ def _fix_all(fix_engine: FixEngine, report, config, yes: bool, project_path: Pat
 
     if is_first_fix:
         console.print("  [yellow]First time running fixes. Showing preview only.[/yellow]")
-        console.print(f"  {len(auto_fixable)} files will be modified. All changes are reversible via `devnog undo`.")
+        affected_files = len({str(f.file) for f in auto_fixable if f.file})
+        console.print(f"  {len(auto_fixable)} issues across {affected_files} file(s) will be fixed. All changes are reversible via `devnog undo`.")
         console.print("  Backups saved to .devnog/backups/")
         console.print("  [dim]Tip: Test on a git branch first.[/dim]\n")
 
