@@ -99,7 +99,7 @@ def scan(target: str, open_dashboard: bool, export_fmt: str | None, fail_under: 
             server.start()
 
         # CI fail-under check
-        effective_fail_under = fail_under or config.scan.fail_under
+        effective_fail_under = fail_under if fail_under is not None and fail_under > 0 else config.scan.fail_under
         if effective_fail_under and report.overall_score < effective_fail_under:
             console.print(
                 f"\n  [red]Score {report.overall_score} is below threshold {effective_fail_under}.[/red]"

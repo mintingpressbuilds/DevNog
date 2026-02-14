@@ -31,13 +31,13 @@ class Scanner:
             if issubclass(check_cls, DependencyCheck):
                 self.dep_checks.append(check_cls())
             elif issubclass(check_cls, BaseCheck):
-                check = check_cls()
-                # Apply config overrides
-                if check.check_id.startswith("CQ-001"):
+                # Apply config overrides for checks that accept parameters
+                check_id = check_cls.check_id
+                if check_id == "CQ-001":
                     check = check_cls(max_length=self.config.scan.max_function_length)  # type: ignore[call-arg]
-                elif check.check_id.startswith("CQ-002"):
+                elif check_id == "CQ-002":
                     check = check_cls(max_depth=self.config.scan.max_nesting_depth)  # type: ignore[call-arg]
-                elif check.check_id.startswith("CQ-007"):
+                elif check_id == "CQ-007":
                     check = check_cls(max_complexity=self.config.scan.max_complexity)  # type: ignore[call-arg]
                 else:
                     check = check_cls()
@@ -126,8 +126,11 @@ class Scanner:
 
         for py_file in path.rglob("*.py"):
             # Check exclusions
-            rel = str(py_file.relative_to(path))
-            if any(excl.rstrip("/") in rel for excl in self.config.exclude):
+            rel_parts = py_file.relative_to(path).parts
+            if any(
+                excl.rstrip("/") in rel_parts
+                for excl in self.config.exclude
+            ):
                 continue
             py_files.append(py_file)
 

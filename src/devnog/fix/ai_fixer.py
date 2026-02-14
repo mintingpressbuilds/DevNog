@@ -41,7 +41,7 @@ class AIFixer:
                 )
         return self._client
 
-    async def generate_fix(self, finding: Finding, context: CodeContext) -> FixProposal | None:
+    def generate_fix(self, finding: Finding, context: CodeContext) -> FixProposal | None:
         """Generate an AI-powered fix for a complex issue."""
         prompt = self._build_prompt(finding, context)
 
@@ -54,7 +54,7 @@ class AIFixer:
             )
 
             return self._parse_response(response, finding, context)
-        except Exception as e:
+        except Exception:
             return None
 
     def _build_prompt(self, finding: Finding, context: CodeContext) -> str:

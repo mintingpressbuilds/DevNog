@@ -65,8 +65,8 @@ class RuleBasedFixer:
         manual_steps = [f'Set environment variable: export {env_var}="<your-value>"']
         if needs_import:
             manual_steps.insert(0, "Add 'import os' to the top of the file")
-            # Prepend import to new_code
-            new_code = new_line
+            new_code = f"import os\n{new_line}"
+            diff = f"+ import os\n- {line}\n+ {new_line}"
 
         return FixProposal(
             finding_id=finding.check_id,
@@ -343,7 +343,23 @@ class RuleBasedFixer:
         if line.rstrip().endswith(")"):
             new_line = line.rstrip()[:-1] + ", timeout=30)"
         else:
-            new_line = line.rstrip() + "  # TODO: add timeout=30"
+            # Multi-line call — mark as requiring review
+            new_line = line.rstrip()
+            return FixProposal(
+                finding_id=finding.check_id,
+                fix_type="rule_based",
+                description="Add timeout=30 to HTTP call",
+                diff=f"  {line}\n  # TODO: add timeout=30 to this call",
+                file=finding.file,
+                line_start=finding.line,
+                line_end=finding.line,
+                new_code=new_line,
+                original_code=line,
+                manual_steps=["Add timeout=30 to the closing parenthesis of this multi-line call"],
+                confidence="medium",
+                confidence_score=0.60,
+                requires_review=True,
+            )
 
         return FixProposal(
             finding_id=finding.check_id,

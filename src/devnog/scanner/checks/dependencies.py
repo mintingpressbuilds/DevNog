@@ -99,17 +99,46 @@ class DEP001KnownCVEs(DependencyCheck):
         for pkg_name, version_spec, req_file in deps:
             pkg_lower = pkg_name.lower()
             if pkg_lower in self.KNOWN_VULNERABLE:
-                if pkg_lower in installed:
-                    # Simplified check: compare installed version
-                    findings.append(self._make_finding(
-                        message=f"Package '{pkg_name}' may have known vulnerabilities",
-                        file_path=req_file,
-                        suggestion=f"Run: pip install --upgrade {pkg_name}",
-                        severity=Severity.CRITICAL,
-                        fix_type=FixType.RULE_BASED,
-                    ))
+                installed_version = installed.get(pkg_lower)
+                if not installed_version:
+                    continue
+                # Check if the installed version falls within a vulnerable range
+                for constraint in self.KNOWN_VULNERABLE[pkg_lower]:
+                    if self._version_matches(installed_version, constraint):
+                        findings.append(self._make_finding(
+                            message=f"Package '{pkg_name}' ({installed_version}) has known vulnerabilities (affected: {constraint})",
+                            file_path=req_file,
+                            suggestion=f"Run: pip install --upgrade {pkg_name}",
+                            severity=Severity.CRITICAL,
+                            fix_type=FixType.RULE_BASED,
+                        ))
 
         return findings
+
+    @staticmethod
+    def _version_matches(installed: str, constraint: str) -> bool:
+        """Check if an installed version matches a vulnerability constraint like '<41.0.4'."""
+        match = re.match(r"([<>=!]+)\s*([\d.]+)", constraint)
+        if not match:
+            return False
+        op, threshold = match.group(1), match.group(2)
+        try:
+            inst_parts = [int(x) for x in installed.split(".")[:3]]
+            thresh_parts = [int(x) for x in threshold.split(".")[:3]]
+            # Pad to equal length
+            while len(inst_parts) < len(thresh_parts):
+                inst_parts.append(0)
+            while len(thresh_parts) < len(inst_parts):
+                thresh_parts.append(0)
+        except ValueError:
+            return False
+        if op == "<":
+            return inst_parts < thresh_parts
+        if op == "<=":
+            return inst_parts <= thresh_parts
+        if op == "==":
+            return inst_parts == thresh_parts
+        return False
 
 
 class DEP002AbandonedPackages(DependencyCheck):
